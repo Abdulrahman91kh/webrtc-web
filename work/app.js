@@ -6,20 +6,8 @@ const socketServer = require('http').Server(app);
 const io = require('socket.io')(socketServer);
 const os = require('os');
 
-app.use( '/', express.static('./'));
-// app.use('/static', express.static('./node_modules'))
-// app.use('/assets', express.static('./public'))
-
-// var os = require('os');
-// var nodeStatic = require('node-static');
-// var http = require('http');
-// var socketIO = require('socket.io');
-// var fileServer = new (nodeStatic.Server)();
-// var app = http.createServer(function (req, res) {
-//     fileServer.serve(req, res);
-// }).listen(4000);
-// var io = socketIO.listen(app);
-
+app.use('/static', express.static('./node_modules'))
+app.use('/assets', express.static('./public'))
 
 const clientData = {
     ip: null
@@ -82,10 +70,10 @@ io.sockets.on('connection', function (socket) {
 });
 
 
-// app.get('/', (req, res) => {
-//     clientData.ip = req.connection.remoteAddress;
-//     res.sendFile(__dirname + '/public/index.html');
-// });
+app.get('/', (req, res) => {
+    clientData.ip = req.connection.remoteAddress;
+    res.sendFile(__dirname + '/public/index.html');
+});
 socketServer.listen(4000, () => {
     console.log('Running on port 4000');
 });

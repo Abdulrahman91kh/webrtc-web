@@ -65,6 +65,13 @@ socket.on('message', message => {
     else if (message.type === 'answer' && isStarted) {// for initiator we don't answer
         pc.setRemoteDescription(new RTCSessionDescription(message));
     }
+    else if (message.type === 'candidate' && isStarted) {
+        const candidate = new RTCIceCandidate({
+            sdpMLineIndex: message.label,
+            candidate: message.candidate
+        });
+        pc.addIceCandidate(candidate);
+    }
     else if (message === 'bye' && isStarted) {
         handleRemoteHangup();
     }

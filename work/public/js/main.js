@@ -56,32 +56,35 @@ socket.on('log', function (array) {
 
 ///////////////////////////////////////////
 
-
 function sendMessage(message) {
-    console.log('Client sending message: ', message);
+    console.log('Sending a Message to Server', message);
     socket.emit('message', message);
 }
 
 // This client receives a message
-socket.on('message', function (message) {
-    console.log('Client received message:', message);
+socket.on('message', message => {
+    console.log('Receiveng Server Message', message);
     if (message === 'got user media') {
         maybeStart();
-    } else if (message.type === 'offer') {
+    }
+    else if (message.type === 'offer') {//getting an offer and aswering it
         if (!isInitiator && !isStarted) {
             maybeStart();
         }
         pc.setRemoteDescription(new RTCSessionDescription(message));
         doAnswer();
-    } else if (message.type === 'answer' && isStarted) {
+    }
+    else if (message.type === 'answer' && isStarted) {// for initiator we don't answer
         pc.setRemoteDescription(new RTCSessionDescription(message));
-    } else if (message.type === 'candidate' && isStarted) {
-        var candidate = new RTCIceCandidate({
+    }
+    else if( message.type === 'candidate' && isStarted){
+        const candidate = new RTCIceCandidate({
             sdpMLineIndex: message.label,
             candidate: message.candidate
         });
         pc.addIceCandidate(candidate);
-    } else if (message === 'bye' && isStarted) {
+    }
+    else if (message === 'bye' && isStarted) {
         handleRemoteHangup();
     }
 });
