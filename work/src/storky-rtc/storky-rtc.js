@@ -17,64 +17,108 @@ class StorkyRTC {
             };
         }
         this.socketEvents = {...socketEvents};
+
+        this.clientsData = {};
     }
     
-    initializer = (io, socket) => {
+    initializer = (app, io, socket) => {
        
         this.socket = socket;
 
         const thisClass = this;
         
-        socket.on(this.socketEvents.serverMessage, function (message) {
+        socket.on(this.socketEvents.serverMessage, message => {
             thisClass.logger('Client said: ', message);
             // for a real app, would be room-only (not broadcast)
             socket.broadcast.emit(thisClass.socketEvents.serverMessage, message);
         });
 
-        socket.on(this.socketEvents.createJoinRoom, function (room) {
+        // The Address used is local one. Need to use a public one.
+        
+        socket.on(this.socketEvents.createJoinRoom, room => {
             thisClass.logger('Received request to create or join room ' + room);
-
+        
             let clientsInRoom = io.sockets.adapter.rooms[room];
             let numClients = clientsInRoom ? Object.keys(clientsInRoom.sockets).length : 0;
             thisClass.logger('Room ' + room + ' now has ' + numClients + ' client(s)');
 
-            if (numClients === 0) {
+            if (numClients === 0) {// room created
+
+                let address = app.get('ip');
+                address = address.split(':');
+                address = address[3] || 'localhost';
+                thisClass.clientsData[address] = { socketID: socket.id, room };
+
                 socket.join(room);
                 thisClass.logger('Client ID ' + socket.id + ' created room ' + room);
-                socket.emit(thisClass.socketEvents.roomCreated, room, socket.id);
 
-            } else if (numClients === 1) {
+                socket.emit(thisClass.socketEvents.roomCreated, {
+                    socketID: socket.id,
+                    userIP: address,
+                    room
+                });
+
+            } else if (numClients < 5 ) {
+                
+                let address = app.get('ip');
+                address = address.split(':');
+                address = address[3] || 'localhost';
+
                 thisClass.logger('Client ID ' + socket.id + ' joined room ' + room);
-                io.sockets.in(room).emit(thisClass.socketEvents.joinRoom, room);
+               
+                io.sockets.in(room).emit(thisClass.socketEvents.joinRoom, {
+                    socketID: socket.id,
+                    userIP: address,
+                    room
+                });
+
                 socket.join(room);
-                socket.emit(thisClass.socketEvents.roomJoined, room, socket.id);
+
+                socket.emit(thisClass.socketEvents.roomJoined, {
+                    existingUsers: thisClass.clientsData,
+                    currentUser: {
+                        userIP: address,
+                        socketID: socket.id,
+                        room
+                    }
+                });
+
+                thisClass.clientsData[address] = { socketID: socket.id, room: room };
+
             } else { // max two clients
                 socket.emit(thisClass.socketEvents.roomFull, room);
             }
         });
 
-        socket.on(this.socketEvents.ipaddr, function () {
-            var ifaces = os.networkInterfaces();
-            for (var dev in ifaces) {
-                ifaces[dev].forEach(function (details) {
-                    if (details.family === 'IPv4' && details.address !== '127.0.0.1') {
-                        socket.emit(thisClass.socketEvents.ipaddr, details.address);
-                    }
-                });
-            }
+        socket.on(this.socketEvents.ipaddr, () => {
+            const userIp = getUserIP();
+            socket.emit(thisClass.socketEvents.ipaddr, userIp);
         });
 
-        socket.on(this.socketEvents.closeConnection, function () {
+        socket.on(this.socketEvents.closeConnection, () => {
             thisClass.logger('Client ID ' + socket.id +' said bye');
         });
 
     };
 
-    logger = message =>{
+    logger = (message, otherParameter) =>{
         if(this.noLog) return false;
-        var array = ['Message from server:'];
+        let array = ['Message from server:'];
         array.push(array, message);
-        console.log(array)
+        if (otherParameter)
+            array.push(array, otherParameter);
+        console.log(array);
+    }
+}
+
+function getUserIP(){
+    let ifaces = os.networkInterfaces();
+    for (let dev in ifaces) {
+        ifaces[dev].forEach(details => {
+            if (details.family === 'IPv4' && details.address !== '127.0.0.1') {
+                return details.address;
+            }
+        });
     }
 }
 

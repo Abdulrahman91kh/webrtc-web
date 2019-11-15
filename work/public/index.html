@@ -27,18 +27,12 @@
             </div>
         </div>
         <!-- <div id="videoChat" class="d-none"> -->
+        <div>
+            <video autoplay id="localVideo" poster="/assets/images/camera-placeholder.jpg"  muted volume="0"></video>
+        </div>
         <div id="videoChat">
             <h2>You are now connected to room <span class="roomName"></span></h2>
-            <div class="row">
-                <div class="col">
-                    <video autoplay id="localVideo" controls muted volume="0"></video>
-                </div>
-                <div class="col">
-                    <video autoplay id="remoteVideo" class="remoteVideo" controls></video>
-                </div>
-                <div class="col">
-                    <video autoplay class="remoteVideo" controls></video>
-                </div>
+            <div id="remoteVideos" class="d-flex justify-content-around bd-highlight">
             </div>
         </div>
     </div>

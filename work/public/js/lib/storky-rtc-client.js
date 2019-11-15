@@ -1,10 +1,10 @@
 class StorkyRTC {
 
-    //usage
+    
 
     /**
      *Creates an instance of StorkyRTC.
-     * @param {*} {roomName, serversConfig, constraints, localVideoElement, remoteVideosClass}
+     * @param {*} {roomName, serversConfig, constraints, localVideoElement, remoteVideosParent}
      * roomName [String]
      * serverConfig [Object] iceServers:{urls: ''},{urls: '', credential: '', username: ''}
      * constraints [Object] {video: boolean, audio: boolean}
@@ -12,17 +12,26 @@ class StorkyRTC {
      * { roomCreated, roomFull, joinRoom, roomJoined, serverMessage, closeConnection }
      * @memberof StorkyRTC
      */
-    constructor({ userData, roomName, socket, serversConfig, constraints, localVideoElement, remoteVideosClass, socketEvents, colorPallet }) {
+    constructor({ userData, roomName, socket, serversConfig, constraints, localVideoElement, remoteVideosParent, socketEvents, colorPallet }) {
+        const roomConfig = { ...arguments[0] };
+        this.roomConfig = roomConfig;
+        this.existingUsers = {};
         this.roomName = roomName;
         this.socket = socket;
-        this.isChannelReady = false;
-        this.isInitiator = false;
-        this.isStarted = false;
-        this.localStream = null;
-        this.peerConnection = null;
-        this.remoteStream = null;
+        // this.isChannelReady = false;
+        // this.isInitiator = false;
+        // this.isStarted = false;
+        // this.localStream = null;//localdata
+        // this.peerConnection = null;
+        // this.remoteStream = null;
+        this.localData = {
+            IP: null,
+            stream: null,
+            socketID: null,
+            videoElement: localVideoElement
+        };
+
         this.turnReady = null;
-        this.isRoomFull = false;
 
         if (serversConfig !== null && serversConfig !== undefined)
             this.peerConnectionConfig = { ...serversConfig };
@@ -34,8 +43,8 @@ class StorkyRTC {
         this.constraints = { ...constraints };
         this.setSessionDescriptionPeerConstrains(constraints);
 
-        this.localVideoElement = localVideoElement;
-        this.remoteVideosClass = remoteVideosClass;
+        // this.localVideoElement = localVideoElement;
+        this.remoteVideosParent = remoteVideosParent;
 
         // Getting Events Names
         if (socketEvents === null || socketEvents === undefined) {
@@ -53,127 +62,171 @@ class StorkyRTC {
         this.socketEvents = socketEvents;
 
         // Set socket events
-        socket.on(socketEvents.roomCreated, room => {
-            this.isInitiator = true;
+        socket.on(socketEvents.roomCreated, userData => {
+            // this.isInitiator = true;
+            this.localData = {
+                ...this.localData,
+                IP: userData.userIP,
+                socketID: userData.socketID
+            }
         });
 
         socket.on(socketEvents.roomFull, room => {
             console.warn('Error: Room is full');
-            this.isRoomFull = true;
+            alert('Room is full, get out');
         });
 
-        socket.on(socketEvents.joinRoom, room => {
-            this.isChannelReady = true;
+        socket.on(socketEvents.joinRoom, newUserData => {
+            // this.isChannelReady = true;
+            this.createNewPeer({
+                userIP: newUserData.userIP,
+                socketID: newUserData.socketID,
+                initiator: true
+            });
+            // console.log(newUserData)
+            // console.log('New User is going to join', newUserData);
         });
 
-        socket.on(socketEvents.roomJoined, room => {
-            this.isChannelReady = true;
-        });
-
-        socket.on(socketEvents.serverMessage, message => {
-            if (message === 'got user media') {
-                this.tryStart();
+        socket.on(socketEvents.roomJoined, data => {
+            this.localData = {
+                ...this.localData,
+                IP: data.currentUser.userIP,
+                socketID: data.currentUser.socketID
             }
-            else if (message.type === 'offer') {//getting an offer and aswering it
-                if (!this.isInitiator && !this.isStarted) {
-                    this.tryStart();
-                }
-                this.peerConnection.setRemoteDescription(new RTCSessionDescription(message));
-                this.sendAnswer();
-            }
-            else if (message.type === 'answer' && this.isStarted) {// for initiator we don't answer
-                this.peerConnection.setRemoteDescription(new RTCSessionDescription(message));
-            }
-            else if (message.type === 'candidate' && this.isStarted) {
-                const candidate = new RTCIceCandidate({
-                    sdpMLineIndex: message.label,
-                    candidate: message.candidate
+            console.log(data)
+            for (let userIP in data.existingUsers){
+                if(userIP === this.localData.IP)
+                    continue;
+                this.createNewPeer({
+                    userIP,
+                    socketID: data.existingUsers[userIP].socketID,
+                    initiator: false
                 });
-                this.peerConnection.addIceCandidate(candidate);
             }
-            else if (message === this.socketEvents.closeConnection && this.isStarted) {
+            // this.isChannelReady = true;
+            // console.log('New User join', room);
+            // console.log(room)
+        });
+
+        socket.on(socketEvents.serverMessage, data => {
+            console.log(data);
+            if (data.message.type === 'got user media') {
+                this.tryStart(data.userIP);
+            }
+            else if (data.message.type === 'offer') {//getting an offer and aswering it
+                if (this.localData.IP !== data.userIP) {
+                    this.tryStart(data.userIP);
+                }
+                this.existingUsers[data.userIP].peerConnection.setRemoteDescription(new RTCSessionDescription(data.message));
+                this.sendAnswer(data.userIP);
+            }
+            else if (data.message.type === 'answer' && data.message.userIP !== this.localData.IP) {// for initiator we don't answer
+                this.existingUsers[data.userIP].peerConnection.setRemoteDescription(new RTCSessionDescription(data.message));
+            }
+            else if (data.message.type === 'candidate' && data.userIP !== this.localData.IP) {
+                const candidate = new RTCIceCandidate({
+                    sdpMLineIndex: data.message.label,
+                    candidate: data.message.candidate
+                });
+                this.existingUsers[data.userIP].peerConnection.addIceCandidate(candidate);
+            }
+            else if (data.message.type === this.socketEvents.closeConnection && this.isStarted) {
                 this.remoteHangup();
             }
         });
 
-        const remoteElements = document.querySelectorAll('.remoteVideo');
-        for (const i of remoteElements) {
-            i.className = i.className + ' idleVideo ';
-        }
+        // const remoteElements = document.querySelectorAll('.remoteVideo');
+        // for (const i of remoteElements) {
+        //     i.className = i.className + ' idleVideo ';
+        // }
         if (colorPallet === null || colorPallet === undefined)
             colorPallet = ['#283592', '#6d64e8', '#4e5663', '#e01c84'];
         this.colorPallet = colorPallet;
-    }
+
+    }// end of constructor
 
     startMediaStreaming = async () => {
-        this.socket.emit(this.socketEvents.createJoinRoom, 'got user media');
         try {
             //try video
             const localStream = await navigator.mediaDevices.getUserMedia(this.constraints);
             this.gotUserStream(localStream);
-            this.requestTurn();
         }
         catch (err) {
             //try audio
             // const userThumbnail = this.createAlphabaticThumbnail('Abdulrahman Khallil');
-            // console.log(this.localVideoElement);
             // this.localVideoElement.parentElement.appendChild(userThumbnail);
-            // this.setConstrains({ audio: true, video: false });
-            // try {
-            //     const audioStream = await navigator.mediaDevices.getUserMedia(this.constraints);
-            //     this.gotUserStream(audioStream);
-            //     this.requestTurn();
-            // }
-            // catch (err) {
-            //     //try nothing
-            //     this.setConstrains({ audio: false, video: false });
-            //     const noStream = await navigator.mediaDevices.getUserMedia(this.constraints);
-            //     this.gotUserStream(noStream);
-            //     this.requestTurn();
-            // }
+            this.setConstrains({ audio: true, video: false });
+            try {
+                const audioStream = await navigator.mediaDevices.getUserMedia(this.constraints);
+                this.gotUserStream(audioStream);
+            }
+            catch (err) {
+                //try nothing
+                this.setConstrains({ audio: false, video: false });
+                const noStream = await navigator.mediaDevices.getUserMedia(this.constraints);
+                this.gotUserStream(noStream);
+            }
         }
+        this.socket.emit(this.socketEvents.createJoinRoom, 'got user media');
 
         window.onbeforeunload = () => { this.sendServerMessage(this.socketEvents.closeConnection) };
     }
 
     gotUserStream = stream => {
-        this.localStream = stream;
-        this.localVideoElement.srcObject = stream;
-        this.sendServerMessage('got user media');
-        if (this.isInitiator) {
-            this.tryStart();
+        this.localData.stream = stream;
+        this.localData.videoElement.srcObject = stream;
+        this.sendServerMessage({type: 'got user media', });
+        // if (this.isInitiator) {
+        //     this.tryStart();
+        // }
+        // this.requestTurn();
+    }
+
+    
+
+    sendServerMessage = message => {// send messages only if user can reconginze himself/herself
+        if(this.localData.IP)
+            this.socket.emit(this.socketEvents.serverMessage, {userIP: this.localData.IP, message});
+        else{
+            const waitingIP = setInterval(() => {
+                if(this.localData.IP){
+                    clearInterval(waitingIP);
+                    this.socket.emit(this.socketEvents.serverMessage, { userIP: this.localData.IP, message });
+                }
+            }, 5);
+        }
+    };
+
+    tryStart = (userIP) => {
+        if (!this.existingUsers[userIP].isStarted && typeof this.localData.stream !== 'undefined' ) {
+            // this.CreatePeerConnection(null, this.peerConnection);
+            this.localData.stream.getTracks().forEach( track => {
+                this.existingUsers[userIP].peerConnection.addTrack(track, this.localData.stream)
+            });
+            this.existingUsers[userIP].isStarted = true;
+            if (this.existingUsers[userIP].isInitiator)
+                this.sendOffer(userIP);
         }
     }
 
 
-    sendServerMessage = message => this.socket.emit(this.socketEvents.serverMessage, message);
-
-    tryStart = () => {
-        if (!this.isStarted && typeof this.localStream !== 'undefined' && this.isChannelReady) {
-            this.CreatePeerConnection();
-            //this method is depcracated for mozilla, should have some work arround
-            this.peerConnection.addStream(this.localStream);
-            this.isStarted = true;
-            if (this.isInitiator)
-                this.sendOffer();
-        }
-    }
-
-
-    CreatePeerConnection = (peerConnectionConstrains) => {
+    CreatePeerConnection = (peerConnectionConstrains, peerConnection) => {
         const pcConstrains = peerConnectionConstrains || null;
         try {
-            this.peerConnection = new RTCPeerConnection(pcConstrains);
-            this.peerConnection.onicecandidate = this.iceCandidateHandler;
-            this.peerConnection.onaddstream = this.remoteStreamAddedHandler;
-            this.peerConnection.onremovestream = this.remoteStreamRemovedHandler;
+            peerConnection = new RTCPeerConnection(pcConstrains);
+            // peerConnection.onicecandidate = this.iceCandidateHandler;
+            // peerConnection.onaddstream = this.remoteStreamAddedHandler;
+            // peerConnection.onremovestream = this.remoteStreamRemovedHandler;
+            return peerConnection;
         }
         catch (err) {
             console.error('Error on creating peer connection', err)
+            return null;
         }
     }
 
-    iceCandidateHandler = event => {
+    iceCandidateHandler = (event) => {
+        console.log('New Candidate')
         if (event.candidate) {
             this.sendServerMessage({
                 type: 'candidate',
@@ -186,41 +239,48 @@ class StorkyRTC {
             console.warn('Error No candidates to be added');
     }
 
-    remoteStreamAddedHandler = event => {
-        this.remoteStream = event.stream;
-        this.setNextRemoteVideo(event.stream);
+    remoteStreamAddedHandler = (event, userIP) => {
+        console.log('New Stream added')
+        this.existingUsers[userIP].stream = event.stream;
+        this.setNextRemoteVideo(event.stream, userIP);
     }
 
-    remoteStreamRemovedHandler = event => {
+    remoteStreamRemovedHandler = (event, userIP) => {
         // stop the users remoteVideo and free it for future use
     }
 
-    setNextRemoteVideo = stream => {
+    setNextRemoteVideo = (stream, userIP) => {
         //getting the not working video and play set this stream to it
-        const remoteVideos = document.querySelectorAll('.' + this.remoteVideosClass);
-        for (const singleVideo of remoteVideos) {
-            if (singleVideo.classList.contains('idleVideo')) {
-                singleVideo.classList.remove('idleVideo');
-                singleVideo.srcObject = stream;
-                return;
-            }
-        }
+        const videoElement = document.createElement('video');
+        const videoContainer = document.createElement('div');
+        this.remoteVideosParent.appendChild(videoContainer);
+        videoContainer.setAttribute('id', 'video-' + userIP.replace(/\./g, '-'));
+        videoContainer.appendChild(videoElement);
+        videoElement.setAttribute('autoplay', 'true');
+        videoElement.setAttribute('poster', '/assets/images/camera-placeholder.jpg')
+        videoElement.srcObject = stream;
+        this.existingUsers[userIP].videoElement = videoElement;
+        //should we send server a copy ?
     }
 
-    sendOffer = () => {
-        this.peerConnection.createOffer(this.setLocalSDPSendServer, error => {
+    sendOffer = (userIP) => {
+        this.existingUsers[userIP].peerConnection.createOffer( sessionDescription => { this.setLocalSDPSendServer(userIP, sessionDescription) },
+            error => {
             console.error('Error on creating an offer ', error);
         });
     }
 
-    sendAnswer = () => {
-        this.peerConnection.createAnswer().then(this.setLocalSDPSendServer).catch((error) => {
-            console.error('Error on creating a response', err);
-        });
+    sendAnswer = (userIP) => {
+        console.log('sending Answer')
+        this.existingUsers[userIP].peerConnection.createAnswer()
+            .then( sessionDescription => { this.setLocalSDPSendServer(userIP, sessionDescription) } )
+            .catch((error) => {
+                console.error('Error on creating a response', error);
+            });
     }
 
-    setLocalSDPSendServer = (sessionDescription) => {
-        this.peerConnection.setLocalDescription(sessionDescription);
+    setLocalSDPSendServer = (userIP, sessionDescription) => {
+        this.existingUsers[userIP].peerConnection.setLocalDescription(sessionDescription);
         this.sendServerMessage(sessionDescription);
     }
 
@@ -266,7 +326,7 @@ class StorkyRTC {
     }
 
     stop = () => {
-        this.isStarted = false;
+        // this.isStarted = false;
         this.peerConnection.close();
         this.peerConnection = null;
     }
@@ -309,5 +369,34 @@ class StorkyRTC {
         this.constraints = { ...constraints };
         this.setSessionDescriptionPeerConstrains(constraints)
     }
+
+    createNewPeer = ({ userIP, socketID, initiator }) => {
+        console.log('Creating Peer for', userIP, socketID, initiator);
+        this.existingUsers = {
+            ...this.existingUsers,
+            [userIP]: {
+                stream: null,
+                videoElement: null,
+                peerConnection: this.CreatePeerConnection(null, null),
+                isInitiator: initiator,
+                isStarted: false,
+                socketID
+            }
+        };
+        this.existingUsers[userIP].peerConnection.onicecandidate = event => {this.iceCandidateHandler(event, userIP)};
+        this.existingUsers[userIP].peerConnection.onaddstream = event => {this.remoteStreamAddedHandler(event, userIP)};
+        this.existingUsers[userIP].peerConnection.onremovestream = event => {this.remoteStreamRemovedHandler(event, userIP)};
+        // if initiator start   
+        if(initiator)
+            this.tryStart(userIP);
+
+        // checkbox.onclick = () => {
+        //     if (checkbox.checked) {
+        //         videoSender = pc1.addTrack(videoTrack, stream);
+        //     } else {
+        //         pc1.removeTrack(videoSender);
+        //     }
+        // }
+    };
 
 }

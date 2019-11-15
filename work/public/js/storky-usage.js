@@ -20,7 +20,7 @@ storkyRTC = new StorkyRTC({
         audio: true
     },
     localVideoElement: document.getElementById('localVideo'),
-    remoteVideosClass: 'remoteVideo',
+    remoteVideosParent: document.getElementById('remoteVideos'),
 });
 
 storkyRTC.startMediaStreaming();
