@@ -4,6 +4,8 @@
 <head>
 
     <title>Realtime communication with WebRTC</title>
+    <link href="https://fonts.googleapis.com/css?family=Poppins&display=swap" rel="stylesheet">
+
     <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.3.1/css/bootstrap.min.css"
         integrity="sha384-ggOyR0iXCbMQv3Xipma34MD+dH/1fQ784/j6cY/iJTQUOhcWr7x9JvoRxT2MZw1T" crossorigin="anonymous">
 
@@ -12,10 +14,9 @@
 </head>
 
 <body>
-
-    <h1>Realtime communication with WebRTC</h1>
-    <hr>
     <div class="container">
+        <h1 class="p-3">Realtime communication with WebRTC</h1>
+        <hr>
         <div id="roomNameContainer">
             <h2>Enter Room Name</h2>
             <div class="form-group">
@@ -25,22 +26,28 @@
                 <button id="create-room" class="btn btn-primary"> Create Room</button>
             </div>
         </div>
-        <div id="videoChat" class="d-none">
+        <!-- <div id="videoChat" class="d-none"> -->
+        <div id="videoChat">
             <h2>You are now connected to room <span class="roomName"></span></h2>
             <div class="row">
                 <div class="col">
                     <video autoplay id="localVideo" controls muted volume="0"></video>
                 </div>
                 <div class="col">
-                    <video autoplay id="remoteVideo" controls></video>
+                    <video autoplay id="remoteVideo" class="remoteVideo" controls></video>
+                </div>
+                <div class="col">
+                    <video autoplay class="remoteVideo" controls></video>
                 </div>
             </div>
         </div>
     </div>
 
     <script src="/static/socket.io-client/dist/socket.io.js"></script>
-    <script src="/assets/js/main.js"></script>
-
+    <script src="/assets/js/lib/adapter.js"></script>
+    <script src="/assets/js/lib/storky-rtc-client.js"></script>
+    <!-- <script src="/assets/js/main.js"></script> -->
+    <script src="/assets/js/storky-usage.js"></script>
 </body>
 
 </html>
