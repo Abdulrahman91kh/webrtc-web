@@ -82,46 +82,23 @@ class StorkyRTC {
             }
             this.localData.pendingPeers = data.existingUsers;
             this.popPendingPeer();
-            // console.log(data.existingUsers)
-            // for (let userIP in data.existingUsers) {
-            //     if (userIP === this.localData.IP)
-            //         continue;
-            //     this.createNewPeer({
-            //         userIP,
-            //         socketID: data.existingUsers[userIP].socketID,
-            //         initiator: true
-            //     });
-            //     this.sendServerMessage({ type: 'got user media', targetIP: userIP });
-            // }
-            // this.isChannelReady = true;
-            // console.log('New User join', room);
-            // console.log(room)
-            
-            /** Call the pop method */
-
         });
 
         socket.on(socketEvents.serverMessage, data => {
-            console.log(data);
+            // console.log('server is saying a message')
+            // console.log(data);
             if (data.message.type === 'got user media') {
-                if (this.localData.IP === data.message.targetIP){
+                if (this.localData.IP === data.targetIP){
                     this.createNewPeer({
                         userIP: data.userIP,
                         socketID: data.socketID,
                         initiator: false,
                     });
-                    // this.tryStart(data.userIP, 2);
                 }
             }
-            // else if (data.message.type === 'send me offer') {// asking for offer
-            //     if (this.localData.IP === data.message.targetIP) {
-            //         this.tryStart(data.message.userIP, 4);
-            //         this.sendOffer(data.message.userIP);
-            //     }
-            // }
+            
             else if (data.message.type === 'offer') {//getting an offer and aswering it
                 if (this.localData.IP === data.targetIP) {
-                    // this.tryStart(data.userIP, 3);
                     this.existingUsers[data.userIP].peerConnection.setRemoteDescription(new RTCSessionDescription(data.message));
                     this.sendAnswer(data.userIP);
                 }
@@ -132,13 +109,17 @@ class StorkyRTC {
                 }
             }
             else if (data.message.type === 'candidate') {
-                console.log("candidate Thing");
-                console.log(data);
-                const candidate = new RTCIceCandidate({
-                    sdpMLineIndex: data.message.label,
-                    candidate: data.message.candidate
-                });
-                this.existingUsers[data.userIP].peerConnection.addIceCandidate(candidate);
+                // console.log("candidate Thing");
+                // console.log(data);
+                // console.log(data.targetIP === this.localData.IP);
+                if( data.targetIP === this.localData.IP){
+                    const candidate = new RTCIceCandidate({
+                        sdpMLineIndex: data.message.label,
+                        candidate: data.message.candidate
+                    });
+                    this.existingUsers[data.userIP].peerConnection.addIceCandidate(candidate);
+                    // console.log("candidate added");
+                }
             }
             else if (data.message === this.socketEvents.closeConnection) {
                 this.remoteHangup(data.userIP);
@@ -159,10 +140,6 @@ class StorkyRTC {
         }
         catch (err) {
             console.log(err);
-            
-            //try audio
-            // const userThumbnail = this.createAlphabaticThumbnail('Abdulrahman Khallil');
-            // this.localVideoElement.parentElement.appendChild(userThumbnail);
             // this.setConstrains({ audio: true, video: false });
             try {
                 const audioStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
@@ -189,11 +166,8 @@ class StorkyRTC {
         this.localData.videoElement.srcObject = stream;
     }
 
-    
-
-
     sendServerMessage = (message, extraParam = null) => {// send messages only if user can reconginze himself/herself
-        console.log('called. the ip is', this.localData.IP)
+        // console.log('called. the ip is', this.localData.IP)
         if (this.localData.IP) {
             this.internalSendMessage(message, extraParam);
         }
@@ -231,23 +205,22 @@ class StorkyRTC {
     }
 
     iceCandidateHandler = (event, userIP) => {
-        console.log('New Candidate')
+        // console.log('New Candidate')
         if (event.candidate) {
             this.sendServerMessage({
                 type: 'candidate',
                 label: event.candidate.sdpMLineIndex,
                 id: event.candidate.sdpMid,
                 candidate: event.candidate.candidate,
-                targetIP: userIP,
                 senderIP: this.localData.IP
-            });
+            }, { targetIP: userIP });
         }
         else
             console.warn('Error No candidates to be added');
     }
 
     remoteStreamAddedHandler = (event, userIP) => {
-        console.log('New Stream added')
+        // console.log('New Stream added')
         this.existingUsers[userIP].stream = event.stream;
         this.setRemoteVideo(event.stream, userIP);
         this.popPendingPeer();
@@ -272,8 +245,8 @@ class StorkyRTC {
     }
 
     sendOffer = (userIP) => {
-        console.log('Sending Offer by' + this.localData.IP);
-        console.log('set the workaround target IP');
+        // console.log('Sending Offer by' + this.localData.IP);
+        // console.log('set the workaround target IP');
         this.existingUsers[userIP].peerConnection.createOffer( sessionDescription => { 
             sessionDescription.targetIP = userIP;
             this.setLocalSDPSendServer(userIP, sessionDescription)
@@ -281,11 +254,11 @@ class StorkyRTC {
             error => {
             console.error('Error on creating an offer ', error);
         });
-        console.log('offerCompleted');
+        // console.log('offerCompleted');
     }
 
     sendAnswer = (userIP) => {
-        console.log('sending Answer')
+        // console.log('sending Answer')
         this.existingUsers[userIP].peerConnection.createAnswer()
             .then( sessionDescription => { this.setLocalSDPSendServer(userIP, sessionDescription) } )
             .catch((error) => {
@@ -294,10 +267,10 @@ class StorkyRTC {
     }
 
     setLocalSDPSendServer = (userIP, sessionDescription) => {
-        console.log('SettingLocal Description', sessionDescription);
+        // console.log('SettingLocal Description', sessionDescription);
         this.existingUsers[userIP].peerConnection.setLocalDescription(sessionDescription);
-        console.log('Should send candidate now This peer ', this.existingUsers[userIP]);
-        console.log('Should send candidate now Description', this.existingUsers[userIP].peerConnection);
+        // console.log('Should send candidate now This peer ', this.existingUsers[userIP]);
+        // console.log('Should send candidate now Description', this.existingUsers[userIP].peerConnection);
         this.sendServerMessage(sessionDescription, {targetIP: userIP});
         this.localData.tempTarget = null;
     }
@@ -365,24 +338,6 @@ class StorkyRTC {
 
     setRoomName = name => this.roomName = name;
 
-
-    //create image thumbnail
-    createAlphabaticThumbnail = name => {
-        const nameTokens = name.split(' ');
-        let nameLetters = nameTokens[0].charAt(0).toUpperCase();
-        nameLetters += nameTokens[1] ? nameTokens[1].charAt(0).toUpperCase() : '';
-        const canvas = document.createElement("canvas");
-        const ctx = canvas.getContext("2d");
-        ctx.font = "30px Poppins";
-        ctx.fillStyle = this.getRandomArrayItem(this.colorPallet);
-        ctx.fillRect(0, 0, canvas.width, canvas.height);
-        ctx.fillStyle = 'white';
-        ctx.fillText(nameLetters, ((canvas.width / 2) - 15), (canvas.height / 2));
-        return canvas;
-    }
-
-    getRandomArrayItem = items => items[Math.floor(Math.random() * items.length)];
-
     setConstrains = constraints => {
         this.constraints = { ...constraints };
         this.setSessionDescriptionPeerConstrains(constraints)
@@ -391,7 +346,7 @@ class StorkyRTC {
     createNewPeer = ({ userIP, socketID, initiator }) => {
         if(this.existingUsers[userIP] !== undefined)
             this.destoryPeerConnection(userIP);
-        console.log('Creating Peer for', userIP, socketID, initiator);
+        // console.log('Creating Peer for', userIP, socketID, initiator);
         this.existingUsers[userIP] = {
             stream: null,
             videoElement: null,
@@ -409,10 +364,6 @@ class StorkyRTC {
             this.remoteStreamRemovedHandler(event, userIP)
         };
         this.startPeeringFlow(userIP);
-
-        // if initiator start   
-        // if(initiator)
-            // this.tryStart(userIP, 1);
 
         // checkbox.onclick = () => {
         //     if (checkbox.checked) {
@@ -434,10 +385,10 @@ class StorkyRTC {
     }
 
     popPendingPeer = () => {
-        console.log('Starting Poping', this.localData.pendingPeers);
+        // console.log('Starting Poping', this.localData.pendingPeers);
         const nextIP = Object.keys(this.localData.pendingPeers)[0];
         if (nextIP === undefined){
-            console.log('End of stack');
+            // console.log('End of stack');
             return false;
         }
         if (nextIP === this.localData.IP){
@@ -445,14 +396,14 @@ class StorkyRTC {
             this.popPendingPeer();
         }
         const tempPeer = {...this.localData.pendingPeers[nextIP]};
-        console.log(tempPeer);
+        // console.log(tempPeer);
         this.createNewPeer({
             userIP: nextIP,
             socketID: tempPeer.socketID,
             initiator: true
         });
         delete this.localData.pendingPeers[nextIP];
-        this.sendServerMessage({ type: 'got user media', targetIP: nextIP });
+        this.sendServerMessage({ type: 'got user media' }, { targetIP: nextIP });
     }
 
     startPeeringFlow = userIP => {

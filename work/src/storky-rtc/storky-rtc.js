@@ -29,15 +29,27 @@ class StorkyRTC {
         const thisClass = this;
         
         socket.on(this.socketEvents.serverMessage, message => {
+            console.log('called 1')
             thisClass.logger('Client said: ', message);
-            // for a real app, would be room-only (not broadcast)
-            socket.broadcast.emit(thisClass.socketEvents.serverMessage, message);
+            if(message === thisClass.socketEvents.closeConnection){
+                socket.broadcast.emit(thisClass.socketEvents.serverMessage, message);
+            }
+            else{
+                console.log(
+                    'Should send this event', message
+                )
+                try{
+                    io.to(thisClass.clientsData[message.targetIP].socketID).emit(thisClass.socketEvents.serverMessage, message);
+                }
+                catch(err){}
+            }
         });
 
         // The Address used is local one. Need to use a public one.
         
         socket.on(this.socketEvents.createJoinRoom, room => {
-            thisClass.logger('Received request to create or join room ' + room);
+            console.log('called 2')
+            thisClass.logger(' Received request to create or join room ' + room);
         
             let clientsInRoom = io.sockets.adapter.rooms[room];
             let numClients = clientsInRoom ? Object.keys(clientsInRoom.sockets).length : 0;
