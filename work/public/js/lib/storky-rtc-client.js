@@ -75,14 +75,11 @@ class StorkyRTC {
         });
 
         socket.on(socketEvents.roomJoined, data => {
-            console.log('New User Joined')
-            console.log(data)
             this.localData = {
                 ...this.localData,
                 IP: data.currentUser.userIP,
                 socketID: data.currentUser.socketID
             }
-            console.log(data)
             this.localData.pendingPeers = data.existingUsers;
             this.popPendingPeer();
             // console.log(data.existingUsers)
@@ -166,16 +163,16 @@ class StorkyRTC {
             //try audio
             // const userThumbnail = this.createAlphabaticThumbnail('Abdulrahman Khallil');
             // this.localVideoElement.parentElement.appendChild(userThumbnail);
-            this.setConstrains({ audio: true, video: false });
+            // this.setConstrains({ audio: true, video: false });
             try {
-                const audioStream = await navigator.mediaDevices.getUserMedia(this.constraints);
+                const audioStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
                 this.gotUserStream(audioStream);
             }
             catch (err) {
                 console.log(err);
                 //try nothing
-                this.setConstrains({ audio: false, video: false });
-                const noStream = await navigator.mediaDevices.getUserMedia(this.constraints);
+                // this.setConstrains({ audio: false, video: false });
+                const noStream = await navigator.mediaDevices.getUserMedia({ audio: false, video: false });
                 this.gotUserStream(noStream);
             }
         }
@@ -220,28 +217,6 @@ class StorkyRTC {
             perparedMessage = { ...perparedMessage, ...extraParam};
         this.socket.emit(this.socketEvents.serverMessage, perparedMessage);
     };
-
-    // tryStart = (userIP, param) => {
-    //     console.log('Trying to start', param)
-    //     console.log('Condition is', !this.existingUsers[userIP].isStarted, typeof this.localData.stream !== 'undefined', !this.existingUsers[userIP].isStarted && typeof this.localData.stream !== 'undefined' )
-    //     if (!this.existingUsers[userIP].isStarted && typeof this.localData.stream !== 'undefined' ) {
-    //         console.log('We are good but not started yet', param)
-    //         this.localData.stream.getTracks().forEach( track => {
-    //             this.existingUsers[userIP].peerConnection.addTrack(track, this.localData.stream)
-    //         });
-    //         console.log('just sent video, audio tracks', param)
-    //         this.existingUsers[userIP].isStarted = true;
-    //         console.log('should start now', param)
-    //         if (this.existingUsers[userIP].isInitiator){
-    //             console.log('Going to send offer now', param)
-    //             this.sendOffer(userIP);
-    //         }
-    //         else{
-    //             // this.sendServerMessage({ type: 'send me offer', targetIP: userIP, userIP: this.localData.IP});
-    //         }
-    //     }
-    // }
-
 
     CreatePeerConnection = (peerConnectionConstrains) => {
         const pcConstrains = peerConnectionConstrains || null;
@@ -370,8 +345,8 @@ class StorkyRTC {
 
     stop = () => {
         //close all peer connections
-        this.peerConnection.close();
-        this.peerConnection = null;
+        // this.peerConnection.close();
+        // this.peerConnection = null;
     }
 
     setSessionDescriptionPeerConstrains = constraints => {
@@ -417,16 +392,12 @@ class StorkyRTC {
         if(this.existingUsers[userIP] !== undefined)
             this.destoryPeerConnection(userIP);
         console.log('Creating Peer for', userIP, socketID, initiator);
-        this.existingUsers = {
-            ...this.existingUsers,
-            [userIP]: {
-                stream: null,
-                videoElement: null,
-                peerConnection: this.CreatePeerConnection(null),
-                isInitiator: initiator,
-                isStarted: false,
-                socketID,
-            }
+        this.existingUsers[userIP] = {
+            stream: null,
+            videoElement: null,
+            peerConnection: this.CreatePeerConnection(null),
+            isInitiator: initiator,
+            socketID,
         };
         this.existingUsers[userIP].peerConnection.onicecandidate = event => {
             this.iceCandidateHandler(event, userIP)

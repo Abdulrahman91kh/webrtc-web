@@ -76,7 +76,7 @@ class StorkyRTC {
 
                 socket.join(room);
 
-                socket.emit(thisClass.socketEvents.roomJoined, {
+                io.to(socket.id).emit(thisClass.socketEvents.roomJoined, {
                     existingUsers: thisClass.clientsData,
                     currentUser: {
                         userIP: address,
@@ -84,7 +84,7 @@ class StorkyRTC {
                         room
                     }
                 });
-
+                console.log('existing users before adding',thisClass.clientsData)
                 thisClass.clientsData[address] = { socketID: socket.id, room: room };
 
             } else { // max two clients
