@@ -49,7 +49,7 @@ class StorkyRTC {
                 address = address.split(':');
                 address = address[3] || 'localhost';
                 thisClass.clientsData[address] = { socketID: socket.id, room };
-
+                console.log(`Cleints in this ${room} room`, thisClass.clientsData);
                 socket.join(room);
                 thisClass.logger('Client ID ' + socket.id + ' created room ' + room);
 
@@ -64,6 +64,7 @@ class StorkyRTC {
                 let address = app.get('ip');
                 address = address.split(':');
                 address = address[3] || 'localhost';
+                console.log(`Cleints in this ${room} room`, thisClass.clientsData);
 
                 thisClass.logger('Client ID ' + socket.id + ' joined room ' + room);
                
