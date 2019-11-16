@@ -28,6 +28,7 @@ class StorkyRTC {
             IP: null,
             stream: null,
             socketID: null,
+            pendingPeers: null,
             videoElement: localVideoElement
         };
 
@@ -56,6 +57,7 @@ class StorkyRTC {
                 roomJoined: 'rtc-room-joined',
                 serverMessage: 'rtc-server-message',
                 closeConnection: 'rtc-server-close',
+                newPeerNegotiation: 'rtc-new-peer-negotiation',
                 ipaddr: 'rtc-ipaddr'
             }
         }
@@ -78,30 +80,34 @@ class StorkyRTC {
 
         socket.on(socketEvents.joinRoom, newUserData => {
             // this.isChannelReady = true;
-            this.createNewPeer({
-                userIP: newUserData.userIP,
-                socketID: newUserData.socketID,
-                initiator: true
-            });
+            // this.createNewPeer({
+            //     userIP: newUserData.userIP,
+            //     socketID: newUserData.socketID,
+            //     initiator: true
+            // });
             // console.log(newUserData)
             // console.log('New User is going to join', newUserData);
         });
 
         socket.on(socketEvents.roomJoined, data => {
+            console.log('New User Joined')
+            // console.log(data)
             this.localData = {
                 ...this.localData,
                 IP: data.currentUser.userIP,
                 socketID: data.currentUser.socketID
             }
-            console.log(data)
-            for (let userIP in data.existingUsers){
-                if(userIP === this.localData.IP)
+            // this.localData.pendingPeers = data.existingUsers;
+            console.log(data.existingUsers)
+            for (let userIP in data.existingUsers) {
+                if (userIP === this.localData.IP)
                     continue;
                 this.createNewPeer({
                     userIP,
                     socketID: data.existingUsers[userIP].socketID,
-                    initiator: false
+                    initiator: true
                 });
+                this.sendServerMessage({ type: 'got user media', target: userIP });
             }
             // this.isChannelReady = true;
             // console.log('New User join', room);
@@ -111,27 +117,44 @@ class StorkyRTC {
         socket.on(socketEvents.serverMessage, data => {
             console.log(data);
             if (data.message.type === 'got user media') {
-                this.tryStart(data.userIP);
+                if (this.localData.IP === data.message.target){
+                    this.createNewPeer({
+                        userIP: data.userIP,
+                        socketID: data.socketID,
+                        initiator: false,
+                    });
+                    this.tryStart(data.userIP, 2);
+                }
+            }
+            else if (data.message.type === 'send me offer') {// asking for offer
+                if (this.localData.IP === data.message.target) {
+                    this.tryStart(data.message.userIP, 4);
+                    this.sendOffer(data.message.userIP);
+                }
             }
             else if (data.message.type === 'offer') {//getting an offer and aswering it
-                if (this.localData.IP !== data.userIP) {
-                    this.tryStart(data.userIP);
+                if (this.localData.IP === data.targetIP) {
+                    this.tryStart(data.userIP, 3);
+                    this.existingUsers[data.userIP].peerConnection.setRemoteDescription(new RTCSessionDescription(data.message));
+                    this.sendAnswer(data.userIP);
                 }
-                this.existingUsers[data.userIP].peerConnection.setRemoteDescription(new RTCSessionDescription(data.message));
-                this.sendAnswer(data.userIP);
             }
-            else if (data.message.type === 'answer' && data.message.userIP !== this.localData.IP) {// for initiator we don't answer
-                this.existingUsers[data.userIP].peerConnection.setRemoteDescription(new RTCSessionDescription(data.message));
+            else if (data.message.type === 'answer' && data.userIP !== this.localData.IP) {// for initiator we don't answer
+                if (this.localData.IP === data.targetIP) {
+                    this.existingUsers[data.userIP].peerConnection.setRemoteDescription(new RTCSessionDescription(data.message));
+                }
             }
-            else if (data.message.type === 'candidate' && data.userIP !== this.localData.IP) {
+            else if (data.message.type === 'candidate') {
+                console.log("candidate Thing");
+                console.log(data);
                 const candidate = new RTCIceCandidate({
                     sdpMLineIndex: data.message.label,
                     candidate: data.message.candidate
                 });
                 this.existingUsers[data.userIP].peerConnection.addIceCandidate(candidate);
             }
-            else if (data.message.type === this.socketEvents.closeConnection && this.isStarted) {
-                this.remoteHangup();
+            else if (data.message === this.socketEvents.closeConnection) {
+                this.remoteHangup(data.userIP);
             }
         });
 
@@ -152,6 +175,8 @@ class StorkyRTC {
             this.gotUserStream(localStream);
         }
         catch (err) {
+            console.log(err);
+            
             //try audio
             // const userThumbnail = this.createAlphabaticThumbnail('Abdulrahman Khallil');
             // this.localVideoElement.parentElement.appendChild(userThumbnail);
@@ -161,6 +186,7 @@ class StorkyRTC {
                 this.gotUserStream(audioStream);
             }
             catch (err) {
+                console.log(err);
                 //try nothing
                 this.setConstrains({ audio: false, video: false });
                 const noStream = await navigator.mediaDevices.getUserMedia(this.constraints);
@@ -169,13 +195,28 @@ class StorkyRTC {
         }
         this.socket.emit(this.socketEvents.createJoinRoom, 'got user media');
 
-        window.onbeforeunload = () => { this.sendServerMessage(this.socketEvents.closeConnection) };
+        window.onbeforeunload = () => { 
+            this.socket.emit(this.socketEvents.closeConnection, {userIP: this.localData.IP});
+            this.sendServerMessage(this.socketEvents.closeConnection) 
+        };
     }
 
     gotUserStream = stream => {
         this.localData.stream = stream;
         this.localData.videoElement.srcObject = stream;
-        this.sendServerMessage({type: 'got user media', });
+        // console.log(this.localData.pendingPeers )
+        // for (let userIP in this.localData.pendingPeers) {
+        //     if (userIP === this.localData.IP)
+        //         continue;
+        //     this.createNewPeer({
+        //         userIP,
+        //         socketID: data.existingUsers[userIP].socketID,
+        //         initiator: false
+        //     });
+        //     this.sendServerMessage({ type: 'got user media', target: this.localData.userIP });
+        // }
+        // this.localData.pendingPeers = null;
+        // this.sendServerMessage({ type: 'got user media', target: this.localData.currentlyPeering });
         // if (this.isInitiator) {
         //     this.tryStart();
         // }
@@ -185,8 +226,17 @@ class StorkyRTC {
     
 
     sendServerMessage = message => {// send messages only if user can reconginze himself/herself
-        if(this.localData.IP)
-            this.socket.emit(this.socketEvents.serverMessage, {userIP: this.localData.IP, message});
+        console.log('called. the ip is', this.localData.IP)
+        if(this.localData.IP){
+            const perparedMessage = {
+                userIP: this.localData.IP,
+                socketID: this.localData.socketID,
+                message
+            }
+            if (this.localData.tempTarget )
+                perparedMessage.targetIP = this.localData.tempTarget;
+            this.socket.emit(this.socketEvents.serverMessage, perparedMessage);
+        }
         else{
             const waitingIP = setInterval(() => {
                 if(this.localData.IP){
@@ -197,15 +247,25 @@ class StorkyRTC {
         }
     };
 
-    tryStart = (userIP) => {
+    tryStart = (userIP, param) => {
+        console.log('Trying to start', param)
+        console.log('Condition is', !this.existingUsers[userIP].isStarted, typeof this.localData.stream !== 'undefined', !this.existingUsers[userIP].isStarted && typeof this.localData.stream !== 'undefined' )
         if (!this.existingUsers[userIP].isStarted && typeof this.localData.stream !== 'undefined' ) {
+            console.log('We are good but not started yet', param)
             // this.CreatePeerConnection(null, this.peerConnection);
             this.localData.stream.getTracks().forEach( track => {
                 this.existingUsers[userIP].peerConnection.addTrack(track, this.localData.stream)
             });
+            console.log('just sent video, audio tracks', param)
             this.existingUsers[userIP].isStarted = true;
-            if (this.existingUsers[userIP].isInitiator)
+            console.log('should start now', param)
+            if (this.existingUsers[userIP].isInitiator){
+                console.log('Going to send offer now', param)
                 this.sendOffer(userIP);
+            }
+            else{
+                // this.sendServerMessage({ type: 'send me offer', target: userIP, userIP: this.localData.IP});
+            }
         }
     }
 
@@ -225,14 +285,16 @@ class StorkyRTC {
         }
     }
 
-    iceCandidateHandler = (event) => {
+    iceCandidateHandler = (event, userIP) => {
         console.log('New Candidate')
         if (event.candidate) {
             this.sendServerMessage({
                 type: 'candidate',
                 label: event.candidate.sdpMLineIndex,
                 id: event.candidate.sdpMid,
-                candidate: event.candidate.candidate
+                candidate: event.candidate.candidate,
+                targetIP: userIP,
+                senderIP: this.localData.IP
             });
         }
         else
@@ -257,21 +319,29 @@ class StorkyRTC {
         videoContainer.setAttribute('id', 'video-' + userIP.replace(/\./g, '-'));
         videoContainer.appendChild(videoElement);
         videoElement.setAttribute('autoplay', 'true');
-        videoElement.setAttribute('poster', '/assets/images/camera-placeholder.jpg')
+        videoElement.setAttribute('poster', '/assets/images/avatar-placeholder.png')
         videoElement.srcObject = stream;
         this.existingUsers[userIP].videoElement = videoElement;
         //should we send server a copy ?
     }
 
     sendOffer = (userIP) => {
-        this.existingUsers[userIP].peerConnection.createOffer( sessionDescription => { this.setLocalSDPSendServer(userIP, sessionDescription) },
+        console.log('Sending Offer by' + this.localData.IP);
+        this.localData.tempTarget = userIP;// work arround to set a target fo each offer
+        console.log('set the workaround target IP');
+        this.existingUsers[userIP].peerConnection.createOffer( sessionDescription => { 
+            sessionDescription.targetIP = userIP;
+            this.setLocalSDPSendServer(userIP, sessionDescription)
+        },
             error => {
             console.error('Error on creating an offer ', error);
         });
+        console.log('offerCompleted');
     }
 
     sendAnswer = (userIP) => {
         console.log('sending Answer')
+        this.localData.tempTarget = userIP;// work arround to set a target fo each offer
         this.existingUsers[userIP].peerConnection.createAnswer()
             .then( sessionDescription => { this.setLocalSDPSendServer(userIP, sessionDescription) } )
             .catch((error) => {
@@ -280,8 +350,12 @@ class StorkyRTC {
     }
 
     setLocalSDPSendServer = (userIP, sessionDescription) => {
+        console.log('SettingLocal Description', sessionDescription);
         this.existingUsers[userIP].peerConnection.setLocalDescription(sessionDescription);
+        console.log('Should send candidate now This peer ', this.existingUsers[userIP]);
+        console.log('Should send candidate now Description', this.existingUsers[userIP].peerConnection);
         this.sendServerMessage(sessionDescription);
+        this.localData.tempTarget = null;
     }
 
     requestTurn(turnURL) {
@@ -319,10 +393,10 @@ class StorkyRTC {
         this.sendServerMessage(this.socketEvents.closeConnection);
     }
 
-    remoteHangup = user => {
+    remoteHangup = userIP => {
         //which user to stop
-        this.stop();
-        this.isInitiator = false;
+        console.log(userIP);
+        this.destoryPeerConnection(userIP);
     }
 
     stop = () => {
@@ -371,6 +445,8 @@ class StorkyRTC {
     }
 
     createNewPeer = ({ userIP, socketID, initiator }) => {
+        if(this.existingUsers[userIP] !== undefined)
+            this.destoryPeerConnection(userIP);
         console.log('Creating Peer for', userIP, socketID, initiator);
         this.existingUsers = {
             ...this.existingUsers,
@@ -380,15 +456,21 @@ class StorkyRTC {
                 peerConnection: this.CreatePeerConnection(null, null),
                 isInitiator: initiator,
                 isStarted: false,
-                socketID
+                socketID,
             }
         };
-        this.existingUsers[userIP].peerConnection.onicecandidate = event => {this.iceCandidateHandler(event, userIP)};
-        this.existingUsers[userIP].peerConnection.onaddstream = event => {this.remoteStreamAddedHandler(event, userIP)};
-        this.existingUsers[userIP].peerConnection.onremovestream = event => {this.remoteStreamRemovedHandler(event, userIP)};
+        this.existingUsers[userIP].peerConnection.onicecandidate = event => {
+            this.iceCandidateHandler(event, userIP)
+        };
+        this.existingUsers[userIP].peerConnection.onaddstream = event => {
+            this.remoteStreamAddedHandler(event, userIP)
+        };
+        this.existingUsers[userIP].peerConnection.onremovestream = event => {
+            this.remoteStreamRemovedHandler(event, userIP)
+        };
         // if initiator start   
         if(initiator)
-            this.tryStart(userIP);
+            this.tryStart(userIP, 1);
 
         // checkbox.onclick = () => {
         //     if (checkbox.checked) {
@@ -398,5 +480,15 @@ class StorkyRTC {
         //     }
         // }
     };
+
+    destoryPeerConnection = (userIP) => {
+        try{
+            this.existingUsers[userIP].peerConnection.close();
+            this.existingUsers[userIP].peerConnection = null;
+            this.existingUsers[userIP].videoElement.parentElement.remove();
+            delete this.existingUsers[userIP];
+        }
+        catch(err){}
+    }
 
 }

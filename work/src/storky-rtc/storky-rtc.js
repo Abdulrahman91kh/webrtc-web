@@ -13,6 +13,7 @@ class StorkyRTC {
                 roomJoined: 'rtc-room-joined',
                 serverMessage: 'rtc-server-message',
                 closeConnection: 'rtc-server-close',
+                newPeerNegotiation: 'rtc-new-peer-negotiation',
                 ipaddr: 'rtc-ipaddr'
             };
         }
@@ -90,12 +91,21 @@ class StorkyRTC {
             }
         });
 
-        socket.on(this.socketEvents.ipaddr, () => {
-            const userIp = getUserIP();
-            socket.emit(thisClass.socketEvents.ipaddr, userIp);
+        //initiate new peer connection
+        socket.on(this.socketEvents.newPeerNegotiation, usersIPs => {
+            thisClass.logger(('Client IP ' + usersIPs.sender.IP + ' wants to negotiate ' + usersIPs.receiverIP));
+            socket.emit(thisClass.socketEvents.newPeerNegotiation, usersIPs);
         });
 
-        socket.on(this.socketEvents.closeConnection, () => {
+        socket.on(this.socketEvents.ipaddr, () => {
+            const userIP = getuserIP();
+            socket.emit(thisClass.socketEvents.ipaddr, userIP);
+        });
+
+        socket.on(this.socketEvents.closeConnection, data => {
+            
+            delete this.clientsData[data.userIP]
+            
             thisClass.logger('Client ID ' + socket.id +' said bye');
         });
 
@@ -111,7 +121,7 @@ class StorkyRTC {
     }
 }
 
-function getUserIP(){
+function getuserIP(){
     let ifaces = os.networkInterfaces();
     for (let dev in ifaces) {
         ifaces[dev].forEach(details => {
